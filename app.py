@@ -60,7 +60,7 @@ def _generate_synthetic() -> pd.DataFrame:
 
 @st.cache_data
 def load_data() -> pd.DataFrame:
-    path = os.path.join(os.path.dirname(__file__), "sample_customers.csv")
+    path = os.path.join(os.path.dirname(__file__), "sample_customers-2.csv")
     if os.path.exists(path):
         return pd.read_csv(path)
     return _generate_synthetic()
