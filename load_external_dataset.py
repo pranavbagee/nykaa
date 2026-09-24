@@ -52,7 +52,7 @@ import pandas as pd
 # ── constants ────────────────────────────────────────────────────────────────
 KAGGLE_DATASET = "okiasstephanie/e-commerce-user-behaviour-data"
 KAGGLE_FILENAME = "ecommerce_user_behaviour_data.csv"   # name inside the zip
-OUT_CSV         = "data/sample_customers.csv"
+OUT_CSV         = "sample_customers-2.csv"
 CHANNELS        = ["search", "social", "influencer", "crm"]
 CATEGORIES      = ["beauty", "fashion", "both"]
 RNG             = np.random.default_rng(42)
