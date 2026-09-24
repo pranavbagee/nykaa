@@ -9,33 +9,61 @@ Run with:
 import os
 import sys
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-from segmentation import fit_segmentation_model, apply_segmentation, predict_segment_single, FEATURES as SEG_FEATURES  # noqa: E402
-from bid_allocation import train_conversion_model, predict_conversion_probability_single, allocate_budget  # noqa: E402
-from attribution import attribution_report  # noqa: E402
-from personalization import generate_offer  # noqa: E402
+from segmentation import fit_segmentation_model, apply_segmentation, predict_segment_single, FEATURES as SEG_FEATURES
+from bid_allocation import train_conversion_model, predict_conversion_probability_single, allocate_budget
+from attribution import attribution_report
+from personalization import generate_offer
 
 st.set_page_config(page_title="Nykaa AI Marketing Model", page_icon="💄", layout="wide")
 
 
-# ---------- Data & model loading (cached so the app stays fast) ----------
+# ---------- Inline data generation ----------
+
+def _generate_synthetic() -> pd.DataFrame:
+    rng = np.random.default_rng(42)
+    N = 500
+    categories = ["beauty", "fashion", "both"]
+    channels   = ["search", "social", "influencer", "crm"]
+
+    purchase_frequency       = rng.poisson(3, N).clip(0, 15)
+    avg_order_value          = np.round(rng.gamma(4, 250, N), 2)
+    price_sensitivity        = np.round(rng.uniform(0, 10, N), 1)
+    days_since_last_purchase = rng.exponential(30, N).astype(int).clip(0, 365)
+
+    df = pd.DataFrame({
+        "customer_id":              [f"C{i:04d}" for i in range(N)],
+        "purchase_frequency":       purchase_frequency,
+        "avg_order_value":          avg_order_value,
+        "price_sensitivity":        price_sensitivity,
+        "category_pref":            rng.choice(categories, N, p=[0.5, 0.3, 0.2]),
+        "days_since_last_purchase": days_since_last_purchase,
+        "last_touch_channel":       rng.choice(channels, N),
+    })
+
+    score = (
+        0.35 * (df["purchase_frequency"] / df["purchase_frequency"].max())
+        + 0.25 * (1 - df["price_sensitivity"] / 10)
+        + 0.25 * (1 - df["days_since_last_purchase"] / 365)
+        + 0.15 * rng.random(N)
+    )
+    df["converted"] = (score > score.median()).astype(int)
+    return df
+
+
+# ---------- Data & model loading ----------
 
 @st.cache_data
-def load_data():
-    path = "data/sample_customers.csv"
-    if not os.path.exists(path):
-        os.makedirs("data", exist_ok=True)
-        # Use the new adapter which tries Kaggle first, then falls back
-        os.system(f"{sys.executable} data/generate_data.py")
-    df = pd.read_csv(path)
-    # Detect source: Kaggle data has numeric customer_id strings (e.g. "00123")
-    # Synthetic has "C0001" style ids
-    is_real = not df["customer_id"].astype(str).str.startswith("C").any()
-    return df, is_real
+def load_data() -> pd.DataFrame:
+    path = os.path.join(os.path.dirname(__file__), "data", "sample_customers.csv")
+    if os.path.exists(path):
+        return pd.read_csv(path)
+    return _generate_synthetic()
 
 
 @st.cache_resource
@@ -48,7 +76,7 @@ def get_conversion_model(df):
     return train_conversion_model(df)
 
 
-(df_raw, is_real_data) = load_data()
+df_raw = load_data()
 km, scaler_seg, label_map = get_segmentation_model(df_raw)
 df = apply_segmentation(df_raw, km, scaler_seg, label_map)
 conv_model, scaler_conv = get_conversion_model(df)
@@ -59,21 +87,13 @@ conv_model, scaler_conv = get_conversion_model(df)
 st.title("💄 AI-Driven Ad Targeting & Budget Optimization")
 st.caption("A conceptual AI model for Nykaa | CIA 3 – Component 2")
 
-if is_real_data:
-    st.success(
-        "**Real dataset loaded:** E-commerce User Behaviour Data "
-        "(Kaggle · okiasstephanie) — 6 019 customer records adapted to the "
-        "Nykaa pipeline schema.",
-        icon="✅",
-    )
-else:
-    st.info(
-        "Running on **synthetic data** (Kaggle credentials not detected). "
-        "To use the real public dataset install the `kaggle` package, add your "
-        "`~/.kaggle/kaggle.json`, then delete `data/sample_customers.csv` and "
-        "restart the app. The **techniques** demonstrated are identical either way.",
-        icon="ℹ️",
-    )
+st.info(
+    "This dashboard runs a synthetic dataset built to resemble Nykaa's first-party "
+    "customer data (real customer-level data is not public). The **techniques** — "
+    "clustering, predictive conversion scoring, time-decay attribution, and rule-based "
+    "personalization — are the real conceptual contribution of this project.",
+    icon="ℹ️",
+)
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "1️⃣ Segmentation",
