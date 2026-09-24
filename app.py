@@ -13,7 +13,6 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "data"))
 
 from segmentation import fit_segmentation_model, apply_segmentation, predict_segment_single, FEATURES as SEG_FEATURES  # noqa: E402
 from bid_allocation import train_conversion_model, predict_conversion_probability_single, allocate_budget  # noqa: E402
@@ -27,11 +26,16 @@ st.set_page_config(page_title="Nykaa AI Marketing Model", page_icon="💄", layo
 
 @st.cache_data
 def load_data():
-    from generate_data import generate_dataframe
-    path = os.path.join(os.path.dirname(__file__), "data", "sample_customers.csv")
-    if os.path.exists(path):
-        return pd.read_csv(path)
-    return generate_dataframe()
+    path = "data/sample_customers.csv"
+    if not os.path.exists(path):
+        os.makedirs("data", exist_ok=True)
+        # Use the new adapter which tries Kaggle first, then falls back
+        os.system(f"{sys.executable} data/generate_data.py")
+    df = pd.read_csv(path)
+    # Detect source: Kaggle data has numeric customer_id strings (e.g. "00123")
+    # Synthetic has "C0001" style ids
+    is_real = not df["customer_id"].astype(str).str.startswith("C").any()
+    return df, is_real
 
 
 @st.cache_resource
@@ -44,7 +48,7 @@ def get_conversion_model(df):
     return train_conversion_model(df)
 
 
-df_raw = load_data()
+(df_raw, is_real_data) = load_data()
 km, scaler_seg, label_map = get_segmentation_model(df_raw)
 df = apply_segmentation(df_raw, km, scaler_seg, label_map)
 conv_model, scaler_conv = get_conversion_model(df)
@@ -55,13 +59,21 @@ conv_model, scaler_conv = get_conversion_model(df)
 st.title("💄 AI-Driven Ad Targeting & Budget Optimization")
 st.caption("A conceptual AI model for Nykaa | CIA 3 – Component 2")
 
-st.info(
-    "This dashboard runs a synthetic dataset built to resemble Nykaa's first-party "
-    "customer data (real customer-level data is not public). The **techniques** — "
-    "clustering, predictive conversion scoring, time-decay attribution, and rule-based "
-    "personalization — are the real conceptual contribution of this project.",
-    icon="ℹ️",
-)
+if is_real_data:
+    st.success(
+        "**Real dataset loaded:** E-commerce User Behaviour Data "
+        "(Kaggle · okiasstephanie) — 6 019 customer records adapted to the "
+        "Nykaa pipeline schema.",
+        icon="✅",
+    )
+else:
+    st.info(
+        "Running on **synthetic data** (Kaggle credentials not detected). "
+        "To use the real public dataset install the `kaggle` package, add your "
+        "`~/.kaggle/kaggle.json`, then delete `data/sample_customers.csv` and "
+        "restart the app. The **techniques** demonstrated are identical either way.",
+        icon="ℹ️",
+    )
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "1️⃣ Segmentation",
